@@ -58,7 +58,8 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
   <p class="sub" id="status"><span class="dot" id="dot"></span><span id="status-text">Party Sheet DM chat</span></p>
 
   <div class="card" id="join">
-    <p style="margin:0">Enter your name and the PIN the player gave you. They'll be asked to let you in.</p>
+    <p style="margin:0" id="jintro">Enter your name and the PIN the player gave you. They'll be asked to let you in.</p>
+    <div id="roomrow" style="display:none"><label for="room">Room code</label><input id="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="9" placeholder="e.g. K7QM-4PXA" style="text-transform:uppercase;letter-spacing:.08em"></div>
     <label for="name">Your name</label><input id="name" autocomplete="nickname" maxlength="40" placeholder="e.g. Mira (DM)">
     <label for="pin">PIN</label><input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 digits">
     <button class="btn" id="go">Ask to join</button>
@@ -76,7 +77,10 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 "use strict";
 var RELAY="https://ntfy.sh/";
 var el=function(id){return document.getElementById(id);};
-var room=(location.hash||"").slice(1).replace(/[^\w-]/g,"");
+// Room codes are 8 characters (shown as ABCD-EFGH); typed ones may have a dash, spaces or small letters
+function normRoom(s){return String(s||"").toUpperCase().replace(/[^A-Z0-9]/g,"");}
+function goodRoom(s){return /^[A-HJKMNP-Z2-9]{8}$/.test(s);}
+var room=normRoom((location.hash||"").slice(1));if(!goodRoom(room))room="";
 var S={id:"",name:"",pair:null,pub:"",joinKey:null,chatKey:null,chatRaw:"",ppub:"",pairKey:null,player:"the player",allowed:false};
 var es=null,lastId="",seen={},since=Math.floor(Date.now()/1000)-60;
 var enc=new TextEncoder(),dec=new TextDecoder();
@@ -166,15 +170,22 @@ function handle(x){
   if(x.t==="end")return stop("The player ended the chat.","Chat ended");
 }
 
-if(!room||room.length<16){el("title").textContent="Party Sheet DM chat";status("Waiting for a chat link",false);
-  el("join").innerHTML="<p style=\"margin:0 0 10px\">This is where a DM joins a player’s private chat. Each chat has its own link, so this page needs the full one.</p>"+
-    "<p style=\"margin:0 0 10px\"><b>To join:</b> ask the player to start a DM chat in Party Sheet (Menu &gt; Private DM chat), then open the link they send you, or scan the QR code on their phone. It looks like <span style=\"word-break:break-all;color:var(--muted)\">…/party-sheet-dm/#Y3CqIsC95Oubd-WynoGsUQ</span>.</p>"+
-    "<p style=\"margin:0;color:var(--muted);font-size:14px\">They’ll also give you a 6-digit PIN, and they have to let you in.</p>";return;}
-
-restore().then(function(back){if(back){inChat();add("sys","Back in the chat.");listen();}});
+// No link: ask for the room code too
+function askRoom(){
+  el("title").textContent="Join a DM chat";status("Party Sheet DM chat",false);
+  el("jintro").textContent="Enter the room code, your name and the PIN the player gave you. They’ll be asked to let you in.";
+  el("roomrow").style.display="block";
+  var help=document.createElement("p");help.className="msg";help.style.marginTop="14px";
+  help.textContent="The player finds the room code and PIN in Party Sheet under Menu > Private DM chat > Invite. You can also open the link they send, or scan the QR code on their phone.";
+  el("join").appendChild(help);
+}
+restore().then(function(back){if(back){inChat();add("sys","Back in the chat.");listen();}else if(!room)askRoom();});
 
 el("go").onclick=function(){
   var name=el("name").value.trim(),pin=el("pin").value.trim();
+  if(el("roomrow").style.display!=="none"){var r=normRoom(el("room").value);
+    if(!goodRoom(r)){el("jmsg").textContent="The room code is 8 letters and numbers, like K7QM-4PXA.";return;}
+    if(r!==room){room=r;S.joinKey=null;history.replaceState(null,"","#"+room);}}
   if(!name){el("jmsg").textContent="Enter your name.";return;}
   if(!/^\d{6}$/.test(pin)){el("jmsg").textContent="The PIN is 6 digits.";return;}
   // Each try makes a fresh key from the PIN typed, so a wrong PIN can simply be corrected and sent again
