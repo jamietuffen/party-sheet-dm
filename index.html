@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A0B0E">
+<meta name="robots" content="noindex">
+<title>Party Sheet · DM chat</title>
+<!--
+  The DM's side of a Party Sheet private chat. A player's app shows a link (this page + #room) and a PIN.
+  Messages go through ntfy.sh, encrypted with AES-GCM using a key made from the PIN (PBKDF2, the room as salt),
+  so the relay only sees scrambled text. The player has to allow each person who joins.
+  Source: d-d-alan-elk/dm-page/index.html. No personal data or keys live in this file.
+-->
+<style>
+:root{--bg:#101216;--surface:#1A1D23;--surface-2:#22262D;--ink:#ECEEF1;--muted:#9AA1AC;--line:#2E333B;--accent:#E35858;--good:#5CC48A;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,textarea{font:inherit;color:inherit}
+.wrap{max-width:620px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px 16px;min-height:100%;display:flex;flex-direction:column}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px}
+label{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
+input,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);outline:none}
+input:focus,textarea:focus{border-color:var(--accent)}
+.btn{display:block;width:100%;margin-top:14px;padding:13px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:700;letter-spacing:.04em}
+.btn:disabled{opacity:.5}
+.msg{color:var(--muted);font-size:14px;margin:10px 0 0;min-height:20px}
+.chat{flex:1;display:none;flex-direction:column;min-height:0}
+.log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:8px 0}
+.b{max-width:80%;padding:9px 12px;border-radius:14px;background:var(--surface-2);white-space:pre-wrap;overflow-wrap:anywhere}
+.b.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.b.them{align-self:flex-start;border-bottom-left-radius:4px}
+.b small{display:block;font-size:11px;opacity:.75;margin-top:2px}
+.sys{align-self:center;color:var(--muted);font-size:13px;text-align:center}
+.send{display:flex;gap:8px;padding:8px 0 max(8px,env(safe-area-inset-bottom))}
+.send textarea{resize:none;height:48px}
+.send .btn{width:auto;margin:0;padding:0 18px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px}
+.dot.on{background:var(--good)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">Private chat</h1>
+  <p class="sub" id="status"><span class="dot" id="dot"></span><span id="status-text">Party Sheet DM chat</span></p>
+
+  <div class="card" id="join">
+    <p style="margin:0">Enter your name and the PIN the player gave you. They'll be asked to let you in.</p>
+    <label for="name">Your name</label><input id="name" autocomplete="nickname" maxlength="40" placeholder="e.g. Mira (DM)">
+    <label for="pin">PIN</label><input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 digits">
+    <button class="btn" id="go">Ask to join</button>
+    <p class="msg" id="jmsg"></p>
+  </div>
+
+  <div class="chat" id="chat">
+    <div class="log" id="log"></div>
+    <div class="send"><textarea id="text" placeholder="Message"></textarea><button class="btn" id="send">Send</button></div>
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var RELAY="https://ntfy.sh/";
+var room=(location.hash||"").slice(1).replace(/[^\w-]/g,"");
+var el=function(id){return document.getElementById(id);};
+var me={id:sessionStorage.getItem("ps-dm-id")||rid(),name:"",key:null,allowed:false,player:"the player"};
+sessionStorage.setItem("ps-dm-id",me.id);
+var es=null,lastId="",seen={},since=Math.floor(Date.now()/1000)-60;
+
+function rid(){var a=new Uint8Array(9);crypto.getRandomValues(a);return btoa(String.fromCharCode.apply(null,a)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
+function b64(buf){return btoa(String.fromCharCode.apply(null,new Uint8Array(buf)));}
+function unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function status(t,on){el("status-text").textContent=t;el("dot").classList.toggle("on",!!on);}
+function keyFrom(pin){
+  var enc=new TextEncoder();
+  return crypto.subtle.importKey("raw",enc.encode(pin),"PBKDF2",false,["deriveKey"]).then(function(base){
+    return crypto.subtle.deriveKey({name:"PBKDF2",salt:enc.encode("party-sheet:"+room),iterations:150000,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);});
+}
+function seal(obj){
+  var iv=crypto.getRandomValues(new Uint8Array(12));
+  return crypto.subtle.encrypt({name:"AES-GCM",iv:iv},me.key,new TextEncoder().encode(JSON.stringify(obj))).then(function(ct){return JSON.stringify({v:1,iv:b64(iv),ct:b64(ct)});});
+}
+function open_(text){
+  var o;try{o=JSON.parse(text);}catch(e){return Promise.reject();}
+  if(!o||o.v!==1)return Promise.reject();
+  return crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(o.iv)},me.key,unb64(o.ct)).then(function(pt){return JSON.parse(new TextDecoder().decode(pt));});
+}
+function send(obj){return seal(obj).then(function(body){return fetch(RELAY+"ps-"+room,{method:"POST",body:body});});}
+function add(cls,text,meta){var d=document.createElement("div");d.className=cls;d.textContent=text;if(meta){var s=document.createElement("small");s.textContent=meta;d.appendChild(s);}el("log").appendChild(d);el("log").scrollTop=el("log").scrollHeight;}
+function time(ts){return new Date(ts).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});}
+
+function listen(){
+  if(es)es.close();
+  es=new EventSource(RELAY+"ps-"+room+"/sse?since="+(lastId||since));
+  es.onopen=function(){if(me.allowed)status("Connected to "+me.player,true);};
+  es.onerror=function(){status("Reconnecting…",false);};
+  es.onmessage=function(ev){
+    var m;try{m=JSON.parse(ev.data);}catch(e){return;}
+    if(m.event!=="message"||seen[m.id])return;seen[m.id]=1;lastId=m.id;
+    open_(m.message).then(function(x){
+      if(x.t==="allow"&&x.to===me.id){if(!me.allowed){me.allowed=true;me.player=x.player||me.player;el("title").textContent="Chat with "+me.player;el("join").style.display="none";el("chat").style.display="flex";add("sys",me.player+" let you in.");status("Connected to "+me.player,true);el("text").focus();}}
+      else if(x.t==="deny"&&x.to===me.id){el("jmsg").textContent="The player said no.";el("go").disabled=false;}
+      else if(x.t==="msg"&&me.allowed&&x.from==="player"&&(!x.to||x.to===me.id))add("b them",x.text,x.name+" · "+time(x.ts));
+      else if(x.t==="msg"&&me.allowed&&x.from===me.id&&!seen["own"+x.ts])add("b me",x.text,time(x.ts));
+      else if(x.t==="end"){add("sys","The player ended the chat.");status("Chat ended",false);el("send").disabled=true;el("text").disabled=true;if(es)es.close();}
+    }).catch(function(){});   // not for us, or made with a different PIN
+  };
+}
+
+if(!room||room.length<16){el("join").innerHTML='<p style="margin:0">This link is missing its chat code. Ask the player for the link again.</p>';return;}
+el("go").onclick=function(){
+  var name=el("name").value.trim(),pin=el("pin").value.trim();
+  if(!name){el("jmsg").textContent="Enter your name.";return;}
+  if(!/^\d{6}$/.test(pin)){el("jmsg").textContent="The PIN is 6 digits.";return;}
+  // Each try makes a fresh key from the PIN typed, so a wrong PIN can simply be corrected and sent again
+  el("go").disabled=true;el("jmsg").textContent="Asking to join… waiting for the player to let you in.";
+  me.name=name;clearTimeout(me.hint);
+  keyFrom(pin).then(function(k){me.key=k;listen();return send({t:"join",id:me.id,name:name,ts:Date.now()});})
+    .then(function(){setTimeout(function(){el("go").disabled=false;el("go").textContent="Ask again";},2500);
+      me.hint=setTimeout(function(){if(!me.allowed)el("jmsg").textContent="No answer yet. Check the PIN with the player, or give them a moment to tap Allow.";},20000);})
+    .catch(function(){el("jmsg").textContent="Couldn't reach the chat. Check your connection and try again.";el("go").disabled=false;});
+};
+el("send").onclick=function(){
+  var text=el("text").value.trim();if(!text||!me.allowed)return;
+  var ts=Date.now();seen["own"+ts]=1;add("b me",text,time(ts));el("text").value="";
+  send({t:"msg",from:me.id,name:me.name,text:text,ts:ts}).catch(function(){add("sys","That message didn't send. Check your connection.");});
+};
+el("text").addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();el("send").click();}});
+})();
+</script>
+</body>
+</html>
