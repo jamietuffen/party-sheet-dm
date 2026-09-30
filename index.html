@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0A0B0E">
 <meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
 <title>Party Sheet · DM chat</title>
 <!--
   The DM's side of a Party Sheet private chat. A player's app shows a link (this page + #room) and a PIN.
@@ -110,9 +111,9 @@ function listen(){
 }
 
 if(!room||room.length<16){el("title").textContent="Party Sheet DM chat";status("Waiting for a chat link",false);
-  el("join").innerHTML='<p style="margin:0 0 10px">This is where a DM joins a player's private chat. Each chat has its own link, so this page needs the full one.</p>'+
-    '<p style="margin:0 0 10px"><b>To join:</b> ask the player to start a DM chat in Party Sheet (Menu &gt; Private DM chat), then open the link they send you, or scan the QR code on their phone. It looks like <span style="word-break:break-all;color:var(--muted)">…/party-sheet-dm/#Y3CqIsC95Oubd-WynoGsUQ</span>.</p>'+
-    '<p style="margin:0;color:var(--muted);font-size:14px">They'll also give you a 6-digit PIN, and they have to let you in.</p>';return;}
+  el("join").innerHTML="<p style=\"margin:0 0 10px\">This is where a DM joins a player’s private chat. Each chat has its own link, so this page needs the full one.</p>"+
+    "<p style=\"margin:0 0 10px\"><b>To join:</b> ask the player to start a DM chat in Party Sheet (Menu &gt; Private DM chat), then open the link they send you, or scan the QR code on their phone. It looks like <span style=\"word-break:break-all;color:var(--muted)\">…/party-sheet-dm/#Y3CqIsC95Oubd-WynoGsUQ</span>.</p>"+
+    "<p style=\"margin:0;color:var(--muted);font-size:14px\">They’ll also give you a 6-digit PIN, and they have to let you in.</p>";return;}
 el("go").onclick=function(){
   var name=el("name").value.trim(),pin=el("pin").value.trim();
   if(!name){el("jmsg").textContent="Enter your name.";return;}
