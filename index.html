@@ -165,7 +165,7 @@ function handle(x){
     // Someone was removed: the chat moves to a new room with a new key, sent to this page privately
     return playerKey(x.ppub).then(function(pk){return unaes(pk,x.box);}).then(function(k){
       return importChatKey(k.gk).then(function(ck){room=k.room;S.chatKey=ck;S.chatRaw=k.gk;lastId="";since=Math.floor(Date.now()/1000)-60;
-        history.replaceState(null,"","#"+room);save();add("sys","Someone was removed from the chat. You've moved to a new private room.");listen();});});
+        history.replaceState(null,"","#"+room);save();add("sys",x.why==="code"?"The player gave the chat a new, shorter room code. You've moved across automatically.":"Someone was removed from the chat. You've moved to a new private room.");listen();});});
   }
   if(x.t==="kicked"&&x.to===S.id)return stop("The player removed you from the chat.","Removed from the chat");
   if(x.t==="end")return stop("The player ended the chat.","Chat ended");
