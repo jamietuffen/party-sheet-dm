@@ -60,7 +60,7 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 
   <div class="card" id="join">
     <p style="margin:0" id="jintro">Enter your name and the PIN the player gave you. They'll be asked to let you in.</p>
-    <div id="roomrow" style="display:none"><label for="room">Room code</label><input id="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="9" placeholder="e.g. K7QM-4PXA" style="text-transform:uppercase;letter-spacing:.08em"></div>
+    <div id="roomrow" style="display:none"><label for="room">Room code</label><input id="room" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="9" placeholder="e.g. K7Q-M4P" style="text-transform:uppercase;letter-spacing:.08em"></div>
     <label for="name">Your name</label><input id="name" autocomplete="nickname" maxlength="40" placeholder="e.g. Mira (DM)">
     <label for="pin">PIN</label><input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 digits">
     <button class="btn" id="go">Ask to join</button>
@@ -78,9 +78,9 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent)}
 "use strict";
 var RELAY="https://ntfy.sh/";
 var el=function(id){return document.getElementById(id);};
-// Room codes are 8 characters (shown as ABCD-EFGH); typed ones may have a dash, spaces or small letters
+// Room codes are 6 characters (shown as ABC-DEF; chats started before were 8); typed ones may have a dash, underscore, spaces or small letters
 function normRoom(s){return String(s||"").toUpperCase().replace(/[^A-Z0-9]/g,"");}
-function goodRoom(s){return /^[A-HJKMNP-Z2-9]{8}$/.test(s);}
+function goodRoom(s){return /^[A-HJKMNP-Z2-9]{6}([A-HJKMNP-Z2-9]{2})?$/.test(s);}
 var room=normRoom((location.hash||"").slice(1));if(!goodRoom(room))room="";
 var S={id:"",name:"",pair:null,pub:"",joinKey:null,chatKey:null,chatRaw:"",ppub:"",pairKey:null,player:"the player",allowed:false};
 var es=null,lastId="",seen={},since=Math.floor(Date.now()/1000)-60;
@@ -185,7 +185,7 @@ restore().then(function(back){if(back){inChat();add("sys","Back in the chat.");l
 el("go").onclick=function(){
   var name=el("name").value.trim(),pin=el("pin").value.trim();
   if(el("roomrow").style.display!=="none"){var r=normRoom(el("room").value);
-    if(!goodRoom(r)){el("jmsg").textContent="The room code is 8 letters and numbers, like K7QM-4PXA.";return;}
+    if(!goodRoom(r)){el("jmsg").textContent="The room code is 6 letters and numbers, like K7Q-M4P.";return;}
     if(r!==room){room=r;S.joinKey=null;history.replaceState(null,"","#"+room);}}
   if(!name){el("jmsg").textContent="Enter your name.";return;}
   if(!/^\d{6}$/.test(pin)){el("jmsg").textContent="The PIN is 6 digits.";return;}
